@@ -76,6 +76,10 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	}
 
 	targetPath := c.workingMountDir
+	internalVolumePath := filepath.Join(targetPath, req.Name)
+	if c.directMount {
+		targetPath = internalVolumePath
+	}
 	sourcePath := req.Parameters[webdavSharePath]
 	notMnt, err := c.mounter.IsLikelyNotMountPoint(targetPath)
 	if err != nil {
@@ -94,12 +98,11 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 
 	stdin := []string{req.GetSecrets()[secretUsernameKey], req.GetSecrets()[secretPasswordKey]}
 	if err := c.mounter.MountSensitiveWithStdin(sourcePath, targetPath, fstype, nil, nil, stdin); err != nil {
-		return nil, status.Errorf(codes.Internal, fmt.Sprintf("mount failed: %v", err.Error()))
+		return nil, status.Errorf(codes.Internal, fmt.Sprintf("mount failed %s: %v", targetPath, err.Error()))
 	}
 
-	internalVolumePath := filepath.Join(targetPath, req.Name)
 	if err = os.Mkdir(internalVolumePath, 0777); err != nil && !os.IsExist(err) {
-		return nil, status.Errorf(codes.Internal, "failed to make subdirectory: %v", err.Error())
+		return nil, status.Errorf(codes.Internal, "failed to make subdirectory %s: %v", internalVolumePath, err.Error())
 	}
 
 	defer func() {
@@ -142,7 +145,7 @@ func (c *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 	stdin := []string{req.GetSecrets()[secretUsernameKey], req.GetSecrets()[secretPasswordKey]}
 	targetPath := c.workingMountDir
 	if err := c.mounter.MountSensitiveWithStdin(sourcePath, targetPath, fstype, nil, nil, stdin); err != nil {
-		return nil, status.Errorf(codes.Internal, fmt.Sprintf("mount failed: %v", err.Error()))
+		return nil, status.Errorf(codes.Internal, fmt.Sprintf("mount failed %s: %v", targetPath, err.Error()))
 	}
 
 	defer func() {

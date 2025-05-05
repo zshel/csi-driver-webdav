@@ -31,6 +31,7 @@ var (
 	driverName            = flag.String("drivername", "", "name of the driver")
 	workingMountDir       = flag.String("working-mount-dir", "/tmp/csi-storage", "working directory for provisioner to mount davfs shares temporarily")
 	defaultOnDeletePolicy = flag.String("default-ondelete-policy", "", "default policy for deleting subdirectory when deleting a volume")
+	directMount           = flag.Bool("direct-mount", false, "should the driver mount the share directly instead of creating a new pvc path")
 )
 
 func main() {
@@ -48,6 +49,7 @@ func main() {
 		MountPermissions:      *mountPermissions,
 		WorkingMountDir:       *workingMountDir,
 		DefaultOnDeletePolicy: *defaultOnDeletePolicy,
+		DirectMount:           *directMount,
 	}
 	d := webdav.NewDriver(&driverOptions)
 	d.Run()

@@ -43,6 +43,7 @@ type Driver struct {
 	mountPermissions      uint64
 	workingMountDir       string
 	defaultOnDeletePolicy string
+	directMount           bool
 
 	cscap []*csi.ControllerServiceCapability
 	nscap []*csi.NodeServiceCapability
@@ -55,6 +56,7 @@ type DriverOpt struct {
 	MountPermissions      uint64
 	WorkingMountDir       string
 	DefaultOnDeletePolicy string
+	DirectMount           bool
 }
 
 func NewDriver(opt *DriverOpt) *Driver {
@@ -73,6 +75,7 @@ func NewDriver(opt *DriverOpt) *Driver {
 		workingMountDir:       opt.WorkingMountDir,
 		defaultOnDeletePolicy: opt.DefaultOnDeletePolicy,
 		version:               driverName,
+		directMount:           opt.DirectMount,
 	}
 
 	driver.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
