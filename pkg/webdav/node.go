@@ -85,6 +85,10 @@ func (n *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublish
 	}
 
 	sourcePath := strings.Join([]string{address, subDir}, "/")
+	if n.Driver.directMount {
+		sourcePath = address
+	}
+
 	stdin := []string{req.GetSecrets()[secretUsernameKey], req.GetSecrets()[secretPasswordKey]}
 	klog.V(2).Infof("NodePublishVolume: volumeID(%v) source(%s) targetPath(%s) mountflags(%v)", volumeID, sourcePath, targetPath, mountOptions)
 	err = n.mounter.MountSensitiveWithStdin(sourcePath, targetPath, fstype, mountOptions, nil, stdin)
