@@ -84,7 +84,7 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	notMnt, err := c.mounter.IsLikelyNotMountPoint(targetPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			if err := os.MkdirAll(targetPath, 0750); err != nil {
+			if err := os.MkdirAll(targetPath, 0777); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
 			}
 			notMnt = true
@@ -97,12 +97,14 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	}
 
 	stdin := []string{req.GetSecrets()[secretUsernameKey], req.GetSecrets()[secretPasswordKey]}
+	klog.Infof("Attemptiing to mount %s to %s with %s", sourcePath, targetPath, fstype)
 	if err := c.mounter.MountSensitiveWithStdin(sourcePath, targetPath, fstype, nil, nil, stdin); err != nil {
 		return nil, status.Errorf(codes.Internal, fmt.Sprintf("mount failed %s: %v", targetPath, err.Error()))
 	}
-
-	if err = os.Mkdir(internalVolumePath, 0777); err != nil && !os.IsExist(err) {
-		return nil, status.Errorf(codes.Internal, "failed to make subdirectory %s: %v", internalVolumePath, err.Error())
+	if !c.directMount {
+		if err = os.Mkdir(internalVolumePath, 0777); err != nil && !os.IsExist(err) {
+			return nil, status.Errorf(codes.Internal, "failed to make subdirectory %s: %v", internalVolumePath, err.Error())
+		}
 	}
 
 	defer func() {
