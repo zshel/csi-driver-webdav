@@ -146,6 +146,10 @@ func (c *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 
 	stdin := []string{req.GetSecrets()[secretUsernameKey], req.GetSecrets()[secretPasswordKey]}
 	targetPath := c.workingMountDir
+	internalVolumePath := filepath.Join(targetPath, subDir)
+	if c.directMount {
+		targetPath = internalVolumePath
+	}
 	if err := c.mounter.MountSensitiveWithStdin(sourcePath, targetPath, fstype, nil, nil, stdin); err != nil {
 		return nil, status.Errorf(codes.Internal, fmt.Sprintf("mount failed %s: %v", targetPath, err.Error()))
 	}
@@ -156,7 +160,6 @@ func (c *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 		}
 	}()
 
-	internalVolumePath := filepath.Join(targetPath, subDir)
 	klog.V(2).Infof("Removing subdirectory at %v", internalVolumePath)
 	if err = os.RemoveAll(internalVolumePath); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete subdirectory: %v", err.Error())
