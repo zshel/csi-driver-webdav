@@ -97,7 +97,8 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	}
 
 	stdin := []string{req.GetSecrets()[secretUsernameKey], req.GetSecrets()[secretPasswordKey]}
-	klog.Infof("Attemptiing to mount %s to %s with %s", sourcePath, targetPath, fstype)
+
+	klog.Infof("Attemptiing to mount %s to %s with %s (%s:%s)", sourcePath, targetPath, fstype, stdin[0], stdin[1])
 	if err := c.mounter.MountSensitiveWithStdin(sourcePath, targetPath, fstype, nil, nil, stdin); err != nil {
 		return nil, status.Errorf(codes.Internal, fmt.Sprintf("mount failed %s: %v", targetPath, err.Error()))
 	}
