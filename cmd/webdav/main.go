@@ -18,10 +18,9 @@ package main
 
 import (
 	"flag"
-	"os"
-
 	"github.com/sys-liqian/csi-driver-webdav/pkg/webdav"
 	"k8s.io/klog/v2"
+	"os"
 )
 
 var (
@@ -49,7 +48,6 @@ func main() {
 		MountPermissions:      *mountPermissions,
 		WorkingMountDir:       *workingMountDir,
 		DefaultOnDeletePolicy: *defaultOnDeletePolicy,
-		DirectMount:           *directMount,
 	}
 	d := webdav.NewDriver(&driverOptions)
 	d.Run()

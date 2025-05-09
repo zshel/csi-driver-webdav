@@ -54,7 +54,6 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	if err := isValidVolumeCapabilities(req.GetVolumeCapabilities()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-
 	mountPermissions := c.Driver.mountPermissions
 	parameters := req.GetParameters()
 	if parameters == nil {
@@ -62,7 +61,7 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	}
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
-		case webdavSharePath, pvcNameKey, pvcNamespaceKey, pvNameKey:
+		case webdavSharePath, pvcNameKey, pvcNamespaceKey, pvNameKey, directMount, readOnly:
 		case mountPermissionsField:
 			if v != "" {
 				var err error
@@ -77,7 +76,8 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 
 	targetPath := c.workingMountDir
 	internalVolumePath := filepath.Join(targetPath, req.Name)
-	if c.directMount {
+	isDirectMount, err := strconv.ParseBool(parameters[directMount])
+	if isDirectMount && err == nil {
 		targetPath = internalVolumePath
 	}
 	sourcePath := req.Parameters[webdavSharePath]
@@ -102,7 +102,7 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	if err := c.mounter.MountSensitiveWithStdin(sourcePath, targetPath, fstype, nil, nil, stdin); err != nil {
 		return nil, status.Errorf(codes.Internal, fmt.Sprintf("mount failed %s: %v", targetPath, err.Error()))
 	}
-	if !c.directMount {
+	if isDirectMount && err == nil {
 		if err = os.Mkdir(internalVolumePath, 0777); err != nil && !os.IsExist(err) {
 			return nil, status.Errorf(codes.Internal, "failed to make subdirectory %s: %v", internalVolumePath, err.Error())
 		}
@@ -123,7 +123,7 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      MakeVolumeId(sourcePath, req.Name),
+			VolumeId:      MakeVolumeId(sourcePath, req.Name, req.GetParameters()),
 			CapacityBytes: 0, // by setting it to zero, Provisioner will use PVC requested size as PV size
 			VolumeContext: nil,
 			ContentSource: req.GetVolumeContentSource(),
@@ -138,7 +138,7 @@ func (c *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 	if volumeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "volume id is empty")
 	}
-	sourcePath, subDir, err := ParseVolumeId(volumeID)
+	sourcePath, subDir, parameters, err := ParseVolumeId(volumeID)
 	if err != nil {
 		// An invalid ID should be treated as doesn't exist
 		klog.Warningf("failed to parse volume for volume id %v deletion: %v", volumeID, err)
@@ -148,23 +148,27 @@ func (c *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 	stdin := []string{req.GetSecrets()[secretUsernameKey], req.GetSecrets()[secretPasswordKey]}
 	targetPath := c.workingMountDir
 	internalVolumePath := filepath.Join(targetPath, subDir)
-	if c.directMount {
+	isDirectMount, err := strconv.ParseBool(parameters[directMount])
+	if isDirectMount && err == nil {
 		targetPath = internalVolumePath
 	}
-	if err := c.mounter.MountSensitiveWithStdin(sourcePath, targetPath, fstype, nil, nil, stdin); err != nil {
-		return nil, status.Errorf(codes.Internal, fmt.Sprintf("mount failed %s: %v", targetPath, err.Error()))
+	isReadOnly, err := strconv.ParseBool(parameters[readOnly])
+	if !isReadOnly {
+		if err := c.mounter.MountSensitiveWithStdin(sourcePath, targetPath, fstype, nil, nil, stdin); err != nil {
+			return nil, status.Errorf(codes.Internal, fmt.Sprintf("mount failed %s: %v", targetPath, err.Error()))
+		}
+		klog.V(2).Infof("Removing subdirectory at %v", internalVolumePath)
+		if err = os.RemoveAll(internalVolumePath); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to delete subdirectory: %v", err.Error())
+		}
 	}
 
+	// Defer the unmount until the end, even if we are read only and it was never mounted, just to be sure
 	defer func() {
 		if err = c.mounter.Unmount(targetPath); err != nil {
 			klog.Warningf("failed to unmount targetpath %s: %v", targetPath, err.Error())
 		}
 	}()
-
-	klog.V(2).Infof("Removing subdirectory at %v", internalVolumePath)
-	if err = os.RemoveAll(internalVolumePath); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to delete subdirectory: %v", err.Error())
-	}
 
 	return &csi.DeleteVolumeResponse{}, nil
 }

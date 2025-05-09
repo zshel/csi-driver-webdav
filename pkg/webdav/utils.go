@@ -18,6 +18,7 @@ package webdav
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -80,14 +81,38 @@ func NewNodeServiceCapability(cap csi.NodeServiceCapability_RPC_Type) *csi.NodeS
 	}
 }
 
-func MakeVolumeId(webdavSharePath, volumeName string) string {
+func MakeVolumeId(webdavSharePath, volumeName string, parameters map[string]string) string {
+	var paramStrings []string
+	if parameters != nil && len(parameters) > 0 {
+		for k, v := range parameters {
+			encoded := base64.RawURLEncoding.EncodeToString([]byte(v))
+			paramStrings = append(paramStrings, fmt.Sprintf("%s=%s", k, encoded))
+		}
+	}
+	if len(paramStrings) > 0 {
+		return fmt.Sprintf("%s#%s#%s", webdavSharePath, volumeName, strings.Join(paramStrings, ":"))
+	}
 	return fmt.Sprintf("%s#%s", webdavSharePath, volumeName)
 }
 
-func ParseVolumeId(volumeId string) (webdavSharePath, subDir string, err error) {
+func ParseVolumeId(volumeId string) (webdavSharePath, subDir string, parameters map[string]string, err error) {
 	arr := strings.Split(volumeId, "#")
+	parsedParameters := make(map[string]string)
 	if len(arr) < 2 {
-		return "", "", errors.New("invalid volumeId")
+		return "", "", nil, errors.New("invalid volumeId")
 	}
-	return arr[0], arr[1], nil
+	if len(arr) > 2 {
+		paramPairs := strings.Split(arr[2], ":")
+		for _, pair := range paramPairs {
+			kv := strings.Split(pair, "=")
+			if len(kv) == 2 {
+				decoded, err := base64.RawURLEncoding.DecodeString(kv[1])
+				if err != nil {
+					return "", "", nil, fmt.Errorf("failed to decode parameter value: %v", err)
+				}
+				parsedParameters[kv[0]] = string(decoded)
+			}
+		}
+	}
+	return arr[0], arr[1], parsedParameters, nil
 }

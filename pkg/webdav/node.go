@@ -19,6 +19,7 @@ package webdav
 import (
 	"context"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -58,15 +59,15 @@ func (n *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublish
 	}
 
 	mountOptions := volCap.GetMount().GetMountFlags()
-	if req.GetReadonly() {
-		mountOptions = append(mountOptions, "ro")
-	}
-
-	address, subDir, err := ParseVolumeId(volumeID)
+	address, subDir, parameters, err := ParseVolumeId(volumeID)
 	if err != nil {
 		// An invalid ID should be treated as doesn't exist
 		klog.Warningf("failed to parse volume for volume id %v deletion: %v", volumeID, err)
 		return &csi.NodePublishVolumeResponse{}, nil
+	}
+	isReadOnly, err := strconv.ParseBool(parameters[readOnly])
+	if req.GetReadonly() || err == nil && isReadOnly {
+		mountOptions = append(mountOptions, "ro")
 	}
 
 	notMnt, err := n.mounter.IsLikelyNotMountPoint(targetPath)
@@ -85,7 +86,8 @@ func (n *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublish
 	}
 
 	sourcePath := strings.Join([]string{address, subDir}, "/")
-	if n.Driver.directMount {
+	isDirectMount, err := strconv.ParseBool(parameters[directMount])
+	if isDirectMount && err == nil {
 		sourcePath = address
 	}
 
